@@ -76,17 +76,15 @@ function updateUserIndex(user) {
 }
 
 async function checkRegion (inputRegion) {
-    await Region.findOne({'name': inputRegion}).lean().exec((err,region) => {
-      if (err) {
-        console.log(err);
-        return false
-      } 
-      if (!region) {
-        return false
-      } 
-      
+  try{
+    const region  = await Region.findOne({'name': inputRegion}).lean().exec()
+    if (region.name==inputRegion)
       return true
-    })
+    else return false
+    } catch (err){
+      console.log(err)
+      return false
+    }
 }
 
 async function checkChapter (inputChapter) {

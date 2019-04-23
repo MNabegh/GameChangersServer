@@ -25,7 +25,6 @@ export async function validateMailDomain(req, res, next) {
 }
 
 export async function validateLocation(req, res, next) {
-  console.log('***'+await utils.checkChapter(req.body.chapter))
   const validChapter = await utils.checkChapter(req.body.chapter)
   const validRegion = await utils.checkRegion(req.body.region)
   if (!validRegion && !validChapter){
