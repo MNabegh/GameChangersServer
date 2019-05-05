@@ -2,7 +2,7 @@ import Joi from 'joi';
 
 const user = Joi.object().keys({
   email: Joi.string().required(),
-  accepted: Joi.boolean().default(false)
+  name: Joi.string().required()
 });
 
   // POST /teams
@@ -31,6 +31,12 @@ export const _respondToInvitation = {
     accepted: Joi.boolean().required()
   },
   params: {
+    teamName: Joi.string().required()
+  }
+};
+
+export const _joinTeam = {
+  body:{
     teamName: Joi.string().required()
   }
 };
