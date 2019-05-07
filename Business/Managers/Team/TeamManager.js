@@ -85,10 +85,13 @@ export async function createTeam(req, res) {
           members: uniqueMembers,
           creator: user._id,
           allowOthers: req.body.allowOthers,
-          lookingFor: req.body.lookingFor
+          lookingFor: req.body.lookingFor,
+          region: user.region,
+          chapter: user.chapter
         });
         await team.save();
       } catch (err) {
+        console.log(err)
         return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(
           httpStatus.INTERNAL_SERVER_ERROR
         ), null, [{ message: 'couldn\'t save team .' }]);
