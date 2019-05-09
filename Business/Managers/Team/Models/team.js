@@ -22,7 +22,17 @@ const teamSchema = new mongoose.Schema({
   },
   lookingFor: {
     type: String,
+
+    // required: true
+  },
+  region: {
+    type: String,
     required: true
+  },
+  chapter: {
+    type: String,
+    required: true
+
   }
 
 });
