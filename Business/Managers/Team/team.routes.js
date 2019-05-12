@@ -5,10 +5,10 @@ import config from '../../../config/config';
 import { isTeamDeadlineReached, validateMembersMailDomain, validateChallenge } from './Config/team.middlewares';
 import {
   deleteTeamMember, createTeam, searchUsers, addTeamMember, teamCreated,
-  viewTeam, viewInvitations, respondToInvitation, joinTeam, getAllTeams
+  viewTeam, viewInvitations, respondToInvitation, joinTeam, getAllTeams, deleteTeam, editTeam
 } from './TeamManager';
 import {
-  _deleteTeamMember, _addTeamMember, _createTeam, _respondToInvitation, _joinTeam
+  _deleteTeamMember, _addTeamMember, _createTeam, _respondToInvitation, _joinTeam, _deleteTeam, _editTeam
 } from './Config/team.validations';
 import { validateMailDomain } from '../User/Config/user.middlewares';
 
@@ -40,4 +40,9 @@ router.route('/self')
   .get(expressJwt({ secret: config.jwtSecret }), teamCreated);
 router.route('/:teamName')
   .get(expressJwt({ secret: config.jwtSecret }), viewTeam);
+router.route('/remove')
+  .delete(expressJwt({ secret: config.jwtSecret }), validate(_deleteTeam), deleteTeam);
+router.route('/self/edit')
+  .post(expressJwt({ secret: config.jwtSecret }), validate(_editTeam), editTeam);
+
 export default router;

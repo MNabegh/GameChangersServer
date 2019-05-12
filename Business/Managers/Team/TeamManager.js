@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import httpStatus from 'http-status-codes';
+import jwt from 'jsonwebtoken';
 import config from '../../../config/config';
 import Team from './Models/team';
 import User from '../User/Models/user';
@@ -12,9 +13,10 @@ const esClient = elasticsearch.esClient;
 
 export async function createTeam(req, res) {
   const uniqueMembers = [];
+  let user;
   if (req.user.teamMember == -1) {
     try {
-      const user = await User.findOneAndUpdate({ email: req.user.email },
+      user = await User.findOneAndUpdate({ email: req.user.email },
         { teamMember: req.body.teamName, creatorOf: req.body.teamName }, { new: true });
 
       const teams = await Team.find({
@@ -30,6 +32,12 @@ export async function createTeam(req, res) {
           httpStatus.getStatusText(httpStatus.BAD_REQUEST),
           null, [{ message: 'Team cannot have more than 5 members!' }]);
       }
+      if (req.body.members.length < 2) {
+        return Utils.sendResponse(res, httpStatus.BAD_REQUEST,
+          httpStatus.getStatusText(httpStatus.BAD_REQUEST),
+          null, [{ message: 'Team cannot have less than 2 members!' }]);
+      }
+
       const members = req.body.members;
       for (let i = 0; i < members.length; i += 1) {
         const member = members[i];
@@ -41,8 +49,11 @@ export async function createTeam(req, res) {
               const userTemp = await User.findOneAndUpdate({ email: member.email.toLowerCase() },
                 { $set: { teamMember: req.body.teamName } }, { new: true });
               uniqueMembers.push(member);
-              /* eslint-enable no-await-in-loop */
+
               Utils.updateUserIndex(userTemp);
+              const body = ' you have been added to a team ';
+              await Mail.sendEmail(member.email, 'added to team', body);
+              /* eslint-enable no-await-in-loop */
             } catch (err) {
               return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR,
                 httpStatus.getStatusText(httpStatus.INTERNAL_SERVER_ERROR), null, [{ message: 'couldn\'t update users team Name from database.' }]);
@@ -55,11 +66,10 @@ export async function createTeam(req, res) {
                 name: member.name,
                 password: 'password123',
                 passConf: 'password123',
-                location: user.location,
+                region: user.region,
+                chapter: user.chapter,
                 previousParticipation: 'no',
-                teamMember: req.body.teamName,
-                position: 'ww',
-                chapter: 'ay kalam'
+                teamMember: req.body.teamName
               });
               const body = ' account has been created with your email and password is password123 please change it after the first time you log in';
               Mail.sendEmail(member.email, 'account creation', body);
@@ -85,10 +95,13 @@ export async function createTeam(req, res) {
           members: uniqueMembers,
           creator: user._id,
           allowOthers: req.body.allowOthers,
-          lookingFor: req.body.lookingFor
+          lookingFor: req.body.lookingFor,
+          region: user.region,
+          chapter: user.chapter
         });
         await team.save();
       } catch (err) {
+        console.log(err);
         return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(
           httpStatus.INTERNAL_SERVER_ERROR
         ), null, [{ message: 'couldn\'t save team .' }]);
@@ -98,7 +111,8 @@ export async function createTeam(req, res) {
         httpStatus.INTERNAL_SERVER_ERROR
       ), null, [{ message: 'couldn\'t fetch users from database.' }]);
     }
-    return Utils.sendResponse(res, httpStatus.OK, httpStatus.getStatusText(httpStatus.OK), { message: 'Team has been created.' });
+    const token = jwt.sign(user.toJSON(), config.jwtSecret);
+    return Utils.sendResponse(res, httpStatus.OK, httpStatus.getStatusText(httpStatus.OK), { message: 'Team has been created.', token });
   }
   return Utils.sendResponse(res, httpStatus.BAD_REQUEST,
     httpStatus.getStatusText(httpStatus.BAD_REQUEST),
@@ -410,9 +424,43 @@ export async function viewInvitations(req, res) {
   }
 }
 
-export async function joinTeam(req, res) {
+
+export async function deleteTeam(req, res) {
   try {
-    const team = await Team.findOneAndUpdate({ name: req.body.teamName }, { $addToSet: { members: { email: req.user.email } } });
+    const team = await Team.findOne({ name: req.body.teamName, creator: req.user._id });
+    if (!team) {
+      console.log(req.user._id);
+      return Utils.sendResponse(res, httpStatus.NOT_FOUND,
+        httpStatus.getStatusText(httpStatus.NOT_FOUND), null, [{ message: 'Team not found or you have no authority to remove it!' }]);
+    }
+
+    try {
+      for (let i = 0; i < team.members.length; i++) {
+        /* eslint-disable no-await-in-loop */
+        const user = await User.findOneAndUpdate({ email: team.members[i].email.toLowerCase() },
+          { $set: { teamMember: '-1' } }, { new: true });
+        /* eslint-enable no-await-in-loop */
+        Utils.updateUserIndex(user);
+      }
+    } catch (err) {
+      return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(
+        httpStatus.INTERNAL_SERVER_ERROR
+      ), null, [{ message: 'couldn\'t update users teamMember field.' }]);
+    }
+
+    await team.remove();
+    return Utils.sendResponse(res, httpStatus.OK,
+      httpStatus.getStatusText(httpStatus.OK), { message: `Team ${req.body.teamName} has been deleted!` });
+  } catch (err) {
+    return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(httpStatus.INTERNAL_SERVER_ERROR), null, [{ message: 'couldn\'t connect to the database' }]);
+  }
+}
+
+export async function joinTeam(req, res) {
+  let team;
+  try {
+    team = await Team.findOneAndUpdate({ name: req.body.teamName },
+      { $addToSet: { members: { email: req.user.email } } });
     if (!team) {
       return Utils.sendResponse(res, httpStatus.NOT_FOUND, httpStatus.getStatusText(
         httpStatus.NOT_FOUND
@@ -423,6 +471,16 @@ export async function joinTeam(req, res) {
       const user = await User.findOneAndUpdate({ email: req.user.email },
         { $set: { teamMember: req.body.teamName } }, { new: true });
       Utils.updateUserIndex(user);
+      try {
+        const creator = await User.findById(team.creator);
+        const body = ' a new member has joined your team ';
+        await Mail.sendEmail(creator.email, 'Some one joined your team', body);
+      } catch (err) {
+        return Utils.sendResponse(res, httpStatus.NOT_FOUND, httpStatus.getStatusText(
+          httpStatus.NOT_FOUND
+        ), null, [{ message: 'can\'t email team creator' }]);
+      }
+
       return Utils.sendResponse(res, httpStatus.OK,
         httpStatus.getStatusText(httpStatus.OK), { message: `Invitation to ${req.body.teamName} has been accepted!` });
     } catch (err) {
@@ -444,5 +502,24 @@ export async function getAllTeams(_, res) {
     Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(
       httpStatus.INTERNAL_SERVER_ERROR
     ), null, [{ message: 'couldn\'t connect to the database' }]);
+  }
+}
+
+export async function editTeam(req, res) {
+  console.log(req.user.email)
+  try {
+    var team = await Team.findOne(
+      { name: req.body.teamName,
+        //creator: req.user.email 
+      })
+    team.allowOthers = req.body.allowOthers;
+    team.lookingFor = req.body.lookingFor;
+    await team.save();
+    return Utils.sendResponse(res, httpStatus.OK,
+      httpStatus.getStatusText(httpStatus.OK), { message: 'Team updated', team });
+  } catch (err) {
+    console.log(err)
+    return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR,
+      httpStatus.getStatusText(httpStatus.INTERNAL_SERVER_ERROR), null, [{ message: 'couldn\'t fetch team please try again!' }]);
   }
 }
