@@ -21,8 +21,9 @@ export async function registerUser(req, res) {
           [{ message: 'Cannot register at this time, please try again later.' }]);
         return;
       }
-      Mail.sendEmail(req.body.email, 'Account Creation for Game Changers',
-          'Your account for game changers has been created with the following credentials:\nemail: ' + req.body.email + '\npassword: '+ req.body.password + '\nYou can login at: http://ias00nan5eba.corp.emc.com/gamechanger/');
+      Mail.sendEmail(req.body.email, 'Welcome to GameChangers 2019!',
+      "Hi "+ req.body.name +",\nWelcome to GameChangers 2019!\n You can log in to your account at http://ec2-54-153-49-90.us-west-1.compute.amazonaws.com with the following credentials: \nemail:"
+      + req.body.email +"\npassword:" + req.body.password + "\nFor more details about the competition, visit https://inside.dell.com/groups/gamechangers at Inside Dell. \nWe look forward to your participation.\nGameChangers 2019");
       const token = jwt.sign(user.toJSON(), config.jwtSecret);
       Utils.sendResponse(res, httpStatus.OK,
         httpStatus.getStatusText(httpStatus.OK),
@@ -113,6 +114,7 @@ export async function forgotPassword(req, res) {
     }
     try {
       const token = await Utils.getRandomToken();
+
       try {
         await User.findByIdAndUpdate({ _id: user._id },
           { resetPasswordToken: token, resetPasswordExpires: Date.now() + 86400000 },
@@ -120,20 +122,26 @@ export async function forgotPassword(req, res) {
         /**
        * TODO send a mail to the user containing the token.
        */
-        //   let body = `Dear ${user.name} ,
-        //     Please follow this link to reset your password
-        // ${config.frontEndUrl}/reset-password?token=${token}
-        // Regards,
-        //   `;
+
+          let body = `Dear ${user.name} ,
+            Please follow this link to reset your password
+        ${config.frontEndUrl}/#/reset-password/${token}
+        Regards,
+          `;
 
         // mailService.sendEmail(user.email, "Password reset", body)
         //   .then(message => res.status(200).json({ message, token }))
         //   .catch(error => res.status(500).json({ message: error }));
-        // if (process.env.ENVIRONMENT === 'testing') {
-        //   Utils.sendResponse(res, httpStatus.OK, httpStatus.getStatusText(httpStatus.OK),
-        //     token);
-        //   return;
-        // }
+        
+        //   console.log('AFTER SEND EMAILLLLLLLLLLLL', process.env.ENVIRONMENT)
+        if (process.env.ENVIRONMENT === 'testing') {
+          Utils.sendResponse(res, httpStatus.OK, httpStatus.getStatusText(httpStatus.OK),
+            token);
+          return;
+        }
+
+        Mail.sendEmail(req.body.email, 'Welcome to GameChangers 2019!', body);
+
         Utils.sendResponse(res, httpStatus.OK, httpStatus.getStatusText(httpStatus.OK), token);
       } catch (error) {
         Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR, httpStatus.getStatusText(
@@ -151,6 +159,7 @@ export async function forgotPassword(req, res) {
     ), null, [{ message: 'couldn\'t connect to the database' }]);
   }
 }
+
 
 export async function resetPassword(req, res) {
   try {
@@ -269,16 +278,18 @@ export async function leaveTeam(req, res) {
       try {
         await team.save();
         user.teamMember = '-1';
-        const creator = User.findById(team.creator)
-        const body = ' some one left your team ';
-        await Mail.sendEmail(creator.email, 'Some one left your team', body);
-
         try {
           await user.save();
           console.log("AFTER SACE")
           Utils.updateUserIndex(user);
+          const creator = await User.findById(team.creator);
+          const body = "Hi "+ creator.name +",\n We are sad to let you know that "+ req.user.name +" has left your GameChangers "+ team.name +
+          " team.\nFor more details about the competition, visit https://inside.dell.com/groups/gamechangers at Inside Dell."+
+          "\nWishing you and your team success!\nGameChangers 2019";
+          await Mail.sendEmail(creator.email, 'Some one left your team', body);
+          const token = jwt.sign(user.toJSON(), config.jwtSecret);
           return Utils.sendResponse(res, httpStatus.OK,
-            httpStatus.getStatusText(httpStatus.OK), { team });
+            httpStatus.getStatusText(httpStatus.OK), { team, token});
         } catch (err) {
           console.log(err)
           return Utils.sendResponse(res, httpStatus.INTERNAL_SERVER_ERROR,
